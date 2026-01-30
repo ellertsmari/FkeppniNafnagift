@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="is">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCS með kvikri bestun</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #0f1117;
+  color: #e0e0e0;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.slide {
+  display: none;
+  flex: 1;
+  padding: 2.5rem 4rem;
+  overflow-y: auto;
+  animation: fadeIn 0.3s ease;
+}
+.slide.active { display: flex; flex-direction: column; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+h1 { font-size: 2.2rem; color: #7eb8ff; margin-bottom: 1.2rem; }
+h2 { font-size: 1.5rem; color: #9ecaff; margin-bottom: 1rem; }
+p, li { font-size: 1.15rem; line-height: 1.7; margin-bottom: 0.6rem; }
+ul { padding-left: 1.5rem; }
+code, .mono { font-family: 'Fira Code', 'Consolas', monospace; background: #1a1d2e; padding: 0.15em 0.4em; border-radius: 4px; color: #f0c674; }
+pre {
+  background: #1a1d2e;
+  padding: 1.2rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 1rem;
+  line-height: 1.6;
+  border: 1px solid #2a2d3e;
+}
+.highlight-str { color: #b5bd68; }
+.highlight-kw { color: #b294bb; }
+.highlight-fn { color: #81a2be; }
+.highlight-num { color: #de935f; }
+.highlight-cmt { color: #636d83; font-style: italic; }
+.highlight-op { color: #c5c8c6; }
+
+.example-box {
+  background: #181b28;
+  border-left: 4px solid #7eb8ff;
+  padding: 1rem 1.4rem;
+  border-radius: 0 8px 8px 0;
+  margin: 1rem 0;
+  font-size: 1.1rem;
+}
+.example-box strong { color: #9ecaff; }
+
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 2rem;
+  background: #161822;
+  border-top: 1px solid #2a2d3e;
+  user-select: none;
+}
+.nav button {
+  background: #2a2d3e;
+  color: #e0e0e0;
+  border: none;
+  padding: 0.5rem 1.4rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.nav button:hover { background: #3a3d5e; }
+.nav button:disabled { opacity: 0.3; cursor: default; }
+.nav .counter { color: #636d83; font-size: 0.95rem; }
+
+/* DP table */
+.dp-controls { margin: 1rem 0; display: flex; gap: 0.8rem; flex-wrap: wrap; }
+.dp-controls button {
+  background: #2a4a7a;
+  color: #e0e0e0;
+  border: none;
+  padding: 0.45rem 1.2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.dp-controls button:hover { background: #3a5a9a; }
+table.dp {
+  border-collapse: collapse;
+  margin: 0.8rem 0;
+  font-family: 'Fira Code', monospace;
+  font-size: 1.05rem;
+}
+table.dp td, table.dp th {
+  width: 2.8rem;
+  height: 2.8rem;
+  text-align: center;
+  border: 1px solid #2a2d3e;
+}
+table.dp th { background: #1e2235; color: #7eb8ff; font-weight: 600; }
+table.dp td { background: #13151f; transition: background 0.3s, color 0.3s; }
+table.dp td.filled { background: #1e2a45; color: #f0c674; }
+table.dp td.current { background: #3a5a9a; color: #fff; }
+table.dp td.path { background: #2a6a3a; color: #b5f5c8; }
+
+.subseq-demo span { display: inline-block; transition: all 0.3s; font-size: 1.4rem; margin: 0 1px; font-family: monospace; }
+.subseq-demo span.highlight { color: #f0c674; font-weight: bold; transform: scale(1.2); }
+.subseq-demo span.dim { color: #444; }
+
+.greedy-vis { margin: 0.8rem 0; }
+.greedy-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.greedy-label {
+  font-family: 'Fira Code', monospace;
+  color: #7eb8ff;
+  min-width: 3.5rem;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+.greedy-chars {
+  display: flex;
+  gap: 3px;
+}
+.greedy-char {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border: 2px solid #2a2d3e;
+  border-radius: 6px;
+  font-family: 'Fira Code', monospace;
+  font-size: 1.2rem;
+  background: #13151f;
+  color: #e0e0e0;
+  transition: all 0.3s;
+}
+.greedy-char.pointer {
+  border-color: #7eb8ff;
+  background: #1e2a45;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(126,184,255,0.3);
+}
+.greedy-char.used {
+  color: #444;
+  border-color: #1a1d2e;
+  background: #0d0f17;
+}
+.greedy-char.matched {
+  border-color: #5cb85c;
+  background: #1e3a1e;
+  color: #b5f5c8;
+}
+.greedy-char.taken {
+  border-color: #f0c674;
+  background: #3a3020;
+  color: #f0c674;
+}
+.greedy-char.result-char {
+  border-color: #2a2d3e;
+  background: #1a1d2e;
+  color: #f0c674;
+  animation: popIn 0.25s ease;
+}
+@keyframes popIn {
+  from { transform: scale(0.5); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.greedy-explain {
+  margin-top: 0.8rem;
+  padding: 0.8rem 1.2rem;
+  background: #181b28;
+  border-left: 4px solid #9ecaff;
+  border-radius: 0 8px 8px 0;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  min-height: 3.2rem;
+}
+.greedy-conclusion {
+  margin-top: 1rem;
+  padding: 1rem 1.4rem;
+  background: #181b28;
+  border-left: 4px solid #e06060;
+  border-radius: 0 8px 8px 0;
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+.greedy-conclusion .optimal {
+  color: #5cb85c;
+  font-weight: bold;
+}
+.greedy-conclusion .greedy-bad {
+  color: #e06060;
+  font-weight: bold;
+}
+.tree-line {
+  display: block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: background 0.3s, color 0.3s;
+}
+.tree-line.tree-hl {
+  background: #2a4a7a;
+  color: #fff;
+}
+.rec-stack-line {
+  font-family: 'Fira Code', monospace;
+  font-size: 0.92rem;
+  color: #9ecaff;
+  background: #151825;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  margin-top: 0.5rem;
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Intro -->
+<div class="slide" id="slide-0">
+  <h1>Hvað er hlutruna?</h1>
+  <p>Hlutruna (e. <em>subsequence</em>) er strengur sem fæst með því að eyða núll eða fleiri stöfum úr öðrum streng, <strong>án þess að breyta röðinni</strong>.</p>
+  <div class="example-box">
+    <strong>Dæmi:</strong> <code>"snat"</code> er hlutruna af <code>"isknattleikur"</code>
+    <div class="subseq-demo" id="subseq-demo" style="margin-top:0.8rem"></div>
+  </div>
+  <p style="margin-top:1rem;">Við þurfum ekki samliggjandi stafi, bara rétta röðina.</p>
+</div>
+
+<!-- Slide 2: The Problem -->
+<div class="slide" id="slide-1">
+  <h1>Vandamálið: Stysta sameiginlega yfirrunan (SCS)</h1>
+  <p>Tvö börn eiga köttinn saman og vilja nefna hann. Hvort þeirra hefur valið nafn. Þau þurfa að finna <strong>stysta nafnið</strong> sem inniheldur bæði nöfnin sem hlutrunu. (sjá <a href="https://iceland.kattis.com/problems/nafnagift/is">nafnagift á Kattis</a>)</p>
+  <div class="example-box">
+    <strong>Inntak:</strong> s₁ = <code>"abac"</code>, s₂ = <code>"cab"</code><br>
+    <strong>Úttak:</strong> <code>"cabac"</code> (lengd 5)<br><br>
+    <code>"cabac"</code> inniheldur <code>"abac"</code> sem hlutrunu (stafir 2,3,4,5)<br>
+    <code>"cabac"</code> inniheldur <code>"cab"</code> sem hlutrunu (stafir 1,2,3)
+  </div>
+  <p>Þetta er þekkt þraut sem nefnist <strong>Shortest Common Supersequence</strong> (SCS). Það að þetta er þekkt og auðvelt að finna á netinu hefur sennilega verið ástæðan fyrir því að þetta er merkt sem auðvelt vandamál á Kattis</p>
+</div>
+
+<!-- Slide 3: Greedy fails -->
+<div class="slide" id="slide-2">
+  <h1>Af hverju virkar gráðug aðferð ekki?</h1>
+  <p>Hugmynd: Förum gegnum s₁ og s₂ samtímis. Ef stafirnir eru eins, tökum þann staf og hliðrum báðum bendum. Annars tökum staf úr s₂ og hliðrum aðeins þeim bendi.</p>
+  <div class="greedy-vis">
+    <div class="greedy-row">
+      <span class="greedy-label">s₁ =</span>
+      <span id="greedy-s1" class="greedy-chars"></span>
+    </div>
+    <div class="greedy-row">
+      <span class="greedy-label">s₂ =</span>
+      <span id="greedy-s2" class="greedy-chars"></span>
+    </div>
+    <div class="greedy-row" style="margin-top:0.6rem;">
+      <span class="greedy-label">SCS =</span>
+      <span id="greedy-result" class="greedy-chars"></span>
+    </div>
+    <div id="greedy-explain" class="greedy-explain">Ýttu á hnappinn til að byrja.</div>
+  </div>
+  <div class="dp-controls">
+    <button onclick="greedyStep()">Næsta skref →</button>
+    <button onclick="greedyAll()">Sýna allt</button>
+    <button onclick="greedyReset()">Byrja aftur</button>
+  </div>
+  <div id="greedy-conclusion" class="greedy-conclusion" style="display:none;"></div>
+  <p style="margin-top:0.8rem;">Við þurfum betri aðferð, <strong>kvika bestun</strong>.</p>
+</div>
+
+<!-- Slide 4: Key insight -->
+<div class="slide" id="slide-3">
+  <h1>Lykilinnsýn</h1>
+  <p>Hvað eiga s₁ og s₂ sameiginlegt? Ef við finnum <strong>lengstu sameiginlegu hlutrununa</strong> (LCS) getum við notað hana til að byggja SCS.</p>
+  <p><strong>LCS</strong> = Longest Common Subsequence, lengsti strengurinn sem er hlutruna af <em>báðum</em> strengjum.</p>
+  <div class="example-box">
+    <strong>Dæmi:</strong> s₁ = <code>"aba"</code>, s₂ = <code>"bba"</code><br>
+    LCS = <code>"ba"</code> -> þetta er lengsti strengurinn sem finnst í báðum sem hlutruna.
+  </div>
+  <p>Af hverju skiptir þetta máli? Í SCS þurfa allir stafir úr <em>báðum</em> strengjum að koma fram. En stafir sem eru sameiginlegir (LCS) þurfa aðeins að koma fram <strong>einu sinni</strong>, ekki tvisvar.</p>
+  <div class="example-box">
+    <strong>s₁ hefur 3 stafi, s₂ hefur 3 stafi.</strong><br>
+    Ef ekkert væri sameiginlegt þyrftum við 3 + 3 = 6 stafi.<br>
+    En LCS = <code>"ba"</code> (2 stafir) eru sameiginlegir, þeir koma aðeins einu sinni fyrir.<br>
+    → SCS lengd = 3 + 3 − 2 = <strong>4</strong><br><br>
+    Við fléttum saman: stafir úr s₁ sem ekki eru í LCS, sameiginlegir stafir, stafir úr s₂ sem ekki eru í LCS, allt í réttri röð:<br>
+    → SCS = <code>"abba"</code>
+  </div>
+  <p>Verkefnið snýst því um að <strong>finna LCS</strong>, og nota hann til að byggja SCS.</p>
+</div>
+
+<!-- Slide 5: Intuition for DP -->
+<div class="slide" id="slide-4">
+  <h1>Hvernig finnum við LCS?</h1>
+  <p>Að finna LCS af tveimur strengjum virðist flókið. Almennt þurfum við aðferð til að <strong>brjóta stórt vandamál niður í smærri vandamál af sömu gerð</strong>.</p>
+
+  <h2>1. Getum við einfaldað vandamálið?</h2>
+  <p>Ef strengirnir væru styttri væri vandamálið auðveldara. Hvernig styttum við þá? Við getum fjarlægt staf af <strong>öðrum hvorum endanum</strong>, fyrsta eða síðasta. Báðar leiðir virka jafn vel. Við veljum hér að skoða <strong>fyrsta stafinn</strong> og stytta strengina að framan.</p>
+  <p>En hvenær á að fjarlægja úr hvorum? Það fer eftir fyrstu stöfunum:</p>
+
+  <h2>2. Hvað segja fyrstu stafirnir okkur?</h2>
+  <div class="example-box">
+    <strong>Tilfelli 1, næstu stafir eru eins:</strong><br>
+    Þá hlýtur sá stafur að tilheyra LCS (það borgar sig aldrei að sleppa samsvörun).<br>
+    → Tökum stafinn og höldum áfram með restina af báðum strengjum.<br><br>
+    <strong>Tilfelli 2, næstu stafir eru ólíkir:</strong><br>
+    Þá er annar þeirra ekki í LCS, en við vitum ekki hvor.<br>
+    → Prófum bæði: sleppa næsta staf úr s₁, eða sleppa næsta staf úr s₂, og tökum þá lengri.
+  </div>
+
+  <h2>3. Skoðum dæmi skref fyrir skref</h2>
+  <p>s₁ = <code>"aba"</code>, s₂ = <code>"bba"</code>. Hvernig leitar endurkvæmnin?</p>
+  <div class="example-box" style="line-height:1.9;">
+    <strong>LCS("aba", "bba"):</strong> Næstu stafir eru <code>'a'</code> og <code>'b'</code> -> ólíkir.<br>
+    Við vitum ekki hvor er í LCS, svo við <em>prófum bæði</em> -> greinumst í tvær leiðir:<br>
+    &nbsp;&nbsp;Leið A: sleppa <code>'a'</code> úr s₁ → LCS(<code>"ba"</code>, <code>"bba"</code>)<br>
+    &nbsp;&nbsp;Leið B: sleppa <code>'b'</code> úr s₂ → LCS(<code>"aba"</code>, <code>"ba"</code>)<br><br>
+
+    <strong>Leið A, LCS("ba", "bba"):</strong> Næstu stafir eru <code>'b'</code> og <code>'b'</code> -> eins!<br>
+    Samsvörun! <code>'b'</code> er í LCS. Höldum áfram með restina → LCS(<code>"a"</code>, <code>"ba"</code>)<br><br>
+
+    &nbsp;&nbsp;<strong>LCS("a", "ba"):</strong> Næstu stafir eru <code>'a'</code> og <code>'b'</code> -> ólíkir. Prófum bæði:<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;Sleppa úr s₁ → LCS(<code>""</code>, <code>"ba"</code>) = tómur strengur (grunntilf.)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;Sleppa úr s₂ → LCS(<code>"a"</code>, <code>"a"</code>): <code>'a'</code>=<code>'a'</code>, samsvörun! LCS = <code>"a"</code><br>
+    &nbsp;&nbsp;→ Besta niðurstaða: <code>"a"</code> (lengd 1)<br><br>
+
+    → <strong>Leið A gefur LCS = <code>"b"</code> + <code>"a"</code> = <code>"ba"</code> (lengd 2)</strong><br><br>
+
+    <strong>Leið B, LCS("aba", "ba"):</strong> Næstu stafir <code>'a'</code> og <code>'b'</code> -> ólíkir. Prófum bæði:<br>
+    &nbsp;&nbsp;Sleppa úr s₁ → LCS(<code>"ba"</code>, <code>"ba"</code>): eins strengir, LCS = <code>"ba"</code><br>
+    &nbsp;&nbsp;Sleppa úr s₂ → LCS(<code>"aba"</code>, <code>"a"</code>) → ... → LCS = <code>"a"</code><br>
+    → <strong>Leið B gefur líka LCS = <code>"ba"</code> (lengd 2)</strong><br><br>
+
+    <span style="color:#f0c674;">Takið eftir: LCS(<code>"a"</code>, <code>"a"</code>) reiknast í bæði leið A og leið B, endurtekning!</span>
+  </div>
+
+  <h2>4. Vandamálið: endurtekningar</h2>
+  <p>Eins og við sáum reiknast sömu undirvandamálin aftur og aftur. Tréð lítur svona út:</p>
+  <div class="example-box" style="font-family:monospace; font-size:0.95rem; line-height:1.8;">
+    <span class="tree-line" id="tree-0">LCS(<code>"aba"</code>, <code>"bba"</code>) &nbsp; 'a' ≠ 'b' → prófum bæði:</span>
+    <span class="tree-line" id="tree-1">├─ <span style="color:#9ecaff;">án fyrsta úr s₁:</span> LCS(<code>"ba"</code>, <code>"bba"</code>) &nbsp; 'b'='b' → samsvörun</span>
+    <span class="tree-line" id="tree-2">│&nbsp; └─ LCS(<code>"a"</code>, <code>"ba"</code>) &nbsp; 'a' ≠ 'b' → prófum bæði:</span>
+    <span class="tree-line" id="tree-3">│&nbsp;&nbsp;&nbsp;&nbsp; ├─ <span style="color:#9ecaff;">án næsta úr s₁:</span> LCS(<code>""</code>, <code>"ba"</code>) → grunntilf.</span>
+    <span class="tree-line" id="tree-4">│&nbsp;&nbsp;&nbsp;&nbsp; └─ <span style="color:#9ecaff;">án næsta úr s₂:</span> LCS(<code>"a"</code>, <code>"a"</code>) &nbsp; 'a'='a' → samsvörun</span>
+    <span class="tree-line" id="tree-5">└─ <span style="color:#9ecaff;">án fyrsta úr s₂:</span> LCS(<code>"aba"</code>, <code>"ba"</code>) &nbsp; 'a' ≠ 'b' → prófum bæði:</span>
+    <span class="tree-line" id="tree-6">&nbsp;&nbsp; ├─ <span style="color:#9ecaff;">án næsta úr s₁:</span> LCS(<code>"ba"</code>, <code>"ba"</code>)</span>
+    <span class="tree-line" id="tree-7">&nbsp;&nbsp; └─ <span style="color:#9ecaff;">án næsta úr s₂:</span> LCS(<code>"aba"</code>, <code>"a"</code>)</span>
+    <span class="tree-line" id="tree-8">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └─ LCS(<code>"ba"</code>, <code>"a"</code>)</span>
+    <span class="tree-line" id="tree-9">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; └─ LCS(<code>"a"</code>, <code>"a"</code>) &nbsp;<span style="color:#f0c674;">← sama og á undan!</span></span>
+  </div>
+
+  <h2>5. Prófaðu endurkvæmnina</h2>
+  <p>Smelltu í gegnum endurkvæmu leitina skref fyrir skref:</p>
+  <div class="greedy-vis">
+    <div class="greedy-row">
+      <span class="greedy-label">s₁ =</span>
+      <span id="rec-s1" class="greedy-chars"></span>
+    </div>
+    <div class="greedy-row">
+      <span class="greedy-label">s₂ =</span>
+      <span id="rec-s2" class="greedy-chars"></span>
+    </div>
+    <div style="margin-top:0.4rem;">
+      <span class="greedy-label">Köll:</span>
+      <span id="rec-stack" class="rec-stack-line"></span>
+    </div>
+    <div class="greedy-row" style="margin-top:0.5rem;">
+      <span class="greedy-label">LCS =</span>
+      <span id="rec-result" class="greedy-chars"></span>
+    </div>
+    <div id="rec-explain" class="greedy-explain">Ýttu á hnappinn til að byrja.</div>
+  </div>
+  <div class="dp-controls">
+    <button onclick="recStep()">Næsta skref →</button>
+    <button onclick="recAll()">Sýna allt</button>
+    <button onclick="recReset()">Byrja aftur</button>
+  </div>
+
+
+</div>
+
+<!-- Slide 6: LCS DP Table -->
+<div class="slide" id="slide-5">
+  <h1>Lausnin: tafla</h1>
+  <p>Við sáum að hvert undirvandamál er skilgreint af tveimur stöðum: <strong>hvar erum við komin í s₁</strong> (<code>i</code>) og <strong>hvar í s₂</strong> (<code>j</code>). Við búum til töflu þar sem reitur <code>dp[i][j]</code> geymir lengd LCS af fyrstu <code>i</code> stöfum s₁ og fyrstu <code>j</code> stöfum s₂.</p>
+
+  <h2>Hvernig fyllum við hverja rúðu?</h2>
+  <p>Við notum nákvæmlega sömu rökfræði og í endurkvæmninni á undan. Til að fylla rúðu <code>dp[i][j]</code> skoðum við stafina <code>s₁[i-1]</code> og <code>s₂[j-1]</code> (þ.e. síðasta stafinn í hverri hlutrunu sem við erum að skoða):</p>
+
+  <div class="example-box">
+    <strong>Ef stafirnir eru eins</strong> (t.d. báðir 'b'):<br>
+    Þá er sá stafur í LCS, eins og við sáum. Við tökum hann og skoðum hvað var á undan:<br>
+    &nbsp;&nbsp;<code>dp[i][j] = dp[i-1][j-1] + 1</code><br>
+    &nbsp;&nbsp;↑ rúðan <strong>á ská upp til vinstri</strong> + 1 fyrir samsvörunina<br><br>
+
+    <strong>Ef stafirnir eru ólíkir</strong> (t.d. 'a' og 'b'):<br>
+    Annar þeirra er ekki í LCS, en við vitum ekki hvor. Svo við prófum bæði:<br><br>
+    &nbsp;&nbsp;• <code>dp[i-1][j]</code> = rúðan <strong>fyrir ofan</strong> -> hvað ef við sleppum næsta úr s₁?<br>
+    &nbsp;&nbsp;• <code>dp[i][j-1]</code> = rúðan <strong>til vinstri</strong> -> hvað ef við sleppum næsta úr s₂?<br><br>
+    Við vitum ekki fyrirfram hvor leiðin gefur lengri LCS, svo við tökum einfaldlega þá <strong>betri</strong>, þ.e. <code>max</code> af þessu tvennu:<br>
+    &nbsp;&nbsp;<code>dp[i][j] = max(dp[i-1][j], dp[i][j-1])</code>
+  </div>
+
+  <p>Fyrsta röðin og fyrsti dálkurinn eru allir <code>0</code>, ef annar strengurinn er tómur er LCS tómur.</p>
+
+  <h2>Prófum þetta</h2>
+  <div class="example-box" style="padding:0.6rem 1rem;">
+    <strong>s₁ = <code>"aba"</code>, s₂ = <code>"bba"</code></strong>
+  </div>
+  <div class="dp-controls">
+    <button onclick="dpStep()">Næsta skref →</button>
+    <button onclick="dpFillAll()">Fylla allt</button>
+    <button onclick="dpReset()">Byrja aftur</button>
+    <span id="dp-info" style="color:#9ecaff; margin-left:0.5rem; font-size:0.95rem;"></span>
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="dp" id="dp-table"></table>
+  </div>
+</div>
+
+<!-- Slide 7: Backtracking -->
+<div class="slide" id="slide-6">
+  <h1>Endurbygging: Finna LCS strenginn úr töflunni</h1>
+  <p>Taflan segir okkur <em>lengd</em> LCS, en við þurfum sjálfan <em>strenginn</em>. Við finnum hann með því að <strong>rekja okkur afturábak</strong>, byrja neðst til hægri og fara í átt að efra vinstra horninu.</p>
+  <p>Á hverju skrefi spyrjum við: hvernig fékk þessi rúða gildið sitt?</p>
+  <div class="example-box">
+    <strong>Ef stafirnir eru eins</strong> (s₁[i-1] = s₂[j-1]):<br>
+    Þá kom gildið úr ská-rúðunni + 1, svo þessi stafur er í LCS.<br>
+    → Skráum stafinn og förum <strong>á ská</strong> (i-1, j-1).<br><br>
+    <strong>Ef stafirnir eru ólíkir:</strong><br>
+    Þá kom gildið úr annarri tveggja: rúðunni fyrir ofan eða til vinstri, sú sem var stærri.<br>
+    Við förum í átt að <strong>stærra gildinu</strong> vegna þess að sú leið leiddi til lengri LCS.<br>
+    → Förum <strong>upp</strong> (ef dp[i-1][j] ≥ dp[i][j-1]) eða <strong>til vinstri</strong> (annars).
+  </div>
+  <div class="dp-controls">
+    <button onclick="btStep()">Næsta skref →</button>
+    <button onclick="btAll()">Sýna alla leið</button>
+    <button onclick="btReset()">Byrja aftur</button>
+    <span id="bt-info" style="color:#9ecaff; margin-left:0.5rem; font-size:0.95rem;"></span>
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="dp" id="bt-table"></table>
+  </div>
+  <p style="margin-top:0.5rem;" id="bt-result"></p>
+</div>
+
+<!-- Slide 8: Building SCS from LCS -->
+<div class="slide" id="slide-7">
+  <h1>Beint úr töflunni í SCS</h1>
+  <p>Í raun þurfum við ekki að finna LCS sérstaklega, við getum byggt <strong>SCS beint</strong> með bakrekstri í sömu töflunni. Aðferðin er svipuð og áður, en nú skrifum við <em>alla</em> stafina, ekki bara LCS:</p>
+  <div class="example-box">
+    <strong>Á hverju skrefi (byrjum neðst til hægri):</strong><br><br>
+    <strong>Ef stafirnir eru eins</strong> (s₁[i-1] = s₂[j-1]):<br>
+    Stafurinn er sameiginlegur, skrifum hann <strong>einu sinni</strong> og förum á ská.<br><br>
+    <strong>Ef stafirnir eru ólíkir:</strong><br>
+    Við förum í átt að stærra gildinu (eins og áður), en <strong>skrifum stafinn sem við sleppum</strong>:<br>
+    &nbsp;&nbsp;• Förum upp → skrifum s₁[i-1] (hann er ekki í LCS, en þarf að vera í SCS)<br>
+    &nbsp;&nbsp;• Förum til vinstri → skrifum s₂[j-1]<br><br>
+    <strong>Þegar annar strengur klárast:</strong><br>
+    Skrifum alla stafi sem eftir eru úr hinum.
+  </div>
+  <p>Þetta gefur SCS <em>öfuga</em> (við byrjum á enda), svo við snúum strengnum við í lokin.</p>
+  <div class="example-box">
+    <strong>Dæmi:</strong> s₁ = <code>"aba"</code>, s₂ = <code>"bba"</code><br><br>
+    <table style="border:none;font-family:monospace;font-size:1.05rem;">
+      <tr><td style="color:#636d83;border:none;padding:0.2rem 1rem 0.2rem 0;">(3,3):</td><td style="border:none;padding:0.2rem;">'a' = 'a' → sameiginlegur, skrifum <span style="color:#b5bd68">'a'</span>, förum á ská → (2,2)</td></tr>
+      <tr><td style="color:#636d83;border:none;padding:0.2rem 1rem 0.2rem 0;">(2,2):</td><td style="border:none;padding:0.2rem;">'b' = 'b' → sameiginlegur, skrifum <span style="color:#b5bd68">'b'</span>, förum á ská → (1,1)</td></tr>
+      <tr><td style="color:#636d83;border:none;padding:0.2rem 1rem 0.2rem 0;">(1,1):</td><td style="border:none;padding:0.2rem;">'a' ≠ 'b' → ofan (0) = vinstri (0), förum upp, skrifum <span style="color:#f0c674">'a'</span> → (0,1)</td></tr>
+      <tr><td style="color:#636d83;border:none;padding:0.2rem 1rem 0.2rem 0;">(0,1):</td><td style="border:none;padding:0.2rem;">s₁ búið, skrifum eftirstandandi úr s₂: <span style="color:#f0c674">'b'</span></td></tr>
+    </table>
+    <p style="margin-top:0.6rem;">Öfugt: <code>"abba"</code> → snúum við → <strong><code style="font-size:1.2rem;">"abba"</code></strong> (lengd 4!)</p>
+  </div>
+</div>
+
+<!-- Slide 9: Full Solution -->
+<div class="slide" id="slide-8">
+  <h1>Heildarlausn í Python</h1>
+  <p>Kóðinn gerir nákvæmlega það sem við lærðum:</p>
+  <ol style="margin-bottom:1rem;">
+    <li><strong>Fylla LCS-töfluna</strong>, röð fyrir röð, með sömu reglum og á glæru 6.</li>
+    <li><strong>Bakrekja til að byggja SCS</strong>, eins og á glæru 8: sameiginlegir stafir einu sinni, hinir skrifaðir þegar við sleppum þeim.</li>
+    <li><strong>Snúa við</strong>, bakrekstrið gefur strenginn öfugan.</li>
+  </ol>
+  <pre id="code-block"></pre>
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button id="prev-btn" onclick="go(-1)">← Til baka</button>
+  <span class="counter" id="counter"></span>
+  <button id="next-btn" onclick="go(1)">Áfram →</button>
+</div>
+
+<script>
+// Navigation
+const slides = document.querySelectorAll('.slide');
+let cur = 0;
+function show(n) {
+  slides[cur].classList.remove('active');
+  cur = Math.max(0, Math.min(slides.length - 1, n));
+  slides[cur].classList.add('active');
+  slides[cur].scrollTop = 0;
+  document.getElementById('counter').textContent = (cur + 1) + ' / ' + slides.length;
+  document.getElementById('prev-btn').disabled = cur === 0;
+  document.getElementById('next-btn').disabled = cur === slides.length - 1;
+  if (cur === 0) initSubseqDemo();
+  if (cur === 2) greedyReset();
+  if (cur === 4) recReset();
+  if (cur === 5) dpReset();
+  if (cur === 6) btReset();
+}
+function go(d) { show(cur + d); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') go(1);
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') go(-1);
+});
+
+// Slide 1: subsequence demo
+function initSubseqDemo() {
+  const word = 'isknattleikur';
+  const sub = 'snat';
+  const el = document.getElementById('subseq-demo');
+  // find matching indices
+  const indices = [];
+  let si = 0;
+  for (let i = 0; i < word.length && si < sub.length; i++) {
+    if (word[i] === sub[si]) { indices.push(i); si++; }
+  }
+  el.innerHTML = word.split('').map((c, i) =>
+    `<span class="${indices.includes(i) ? 'highlight' : 'dim'}">${c}</span>`
+  ).join('');
+}
+
+// Slide 3: Greedy step-through
+const gs1 = 'aba', gs2 = 'bba';
+let gi, gj, gResult, gDone;
+
+function greedyRender() {
+  const s1El = document.getElementById('greedy-s1');
+  const s2El = document.getElementById('greedy-s2');
+  const resEl = document.getElementById('greedy-result');
+
+  s1El.innerHTML = gs1.split('').map((c, idx) => {
+    let cls = 'greedy-char';
+    if (idx < gi) cls += ' used';
+    else if (idx === gi && !gDone) cls += ' pointer';
+    return `<span class="${cls}">${c}</span>`;
+  }).join('');
+
+  s2El.innerHTML = gs2.split('').map((c, idx) => {
+    let cls = 'greedy-char';
+    if (idx < gj) cls += ' used';
+    else if (idx === gj && !gDone) cls += ' pointer';
+    return `<span class="${cls}">${c}</span>`;
+  }).join('');
+
+  resEl.innerHTML = gResult.split('').map(c =>
+    `<span class="greedy-char result-char">${c}</span>`
+  ).join('');
+}
+
+function greedyReset() {
+  gi = 0; gj = 0; gResult = ''; gDone = false;
+  greedyRender();
+  document.getElementById('greedy-explain').innerHTML = 'Ýttu á hnappinn til að byrja.';
+  document.getElementById('greedy-conclusion').style.display = 'none';
+}
+
+function greedyDoStep() {
+  if (gDone) return false;
+  const el = document.getElementById('greedy-explain');
+
+  // Both pointers still in range
+  if (gi < gs1.length && gj < gs2.length) {
+    if (gs1[gi] === gs2[gj]) {
+      gResult += gs1[gi];
+      el.innerHTML = `<strong>Samanburður:</strong> s₁[${gi}] = <code>'${gs1[gi]}'</code> og s₂[${gj}] = <code>'${gs2[gj]}'</code> -> <span style="color:#5cb85c;">eins!</span><br>Tökum stafinn einu sinni og hliðrum <em>báðum</em> bendum.`;
+      gi++; gj++;
+    } else {
+      gResult += gs2[gj];
+      el.innerHTML = `<strong>Samanburður:</strong> s₁[${gi}] = <code>'${gs1[gi]}'</code> og s₂[${gj}] = <code>'${gs2[gj]}'</code> -> <span style="color:#e06060;">ólíkir.</span><br>Tökum <code>'${gs2[gj]}'</code> úr s₂ (gráðug regla) og hliðrum s₂-bendi.`;
+      gj++;
+    }
+  } else if (gi < gs1.length) {
+    // s2 exhausted, drain s1
+    gResult += gs1[gi];
+    el.innerHTML = `s₂ er búið. Bætum eftirstandandi staf úr s₁: <code>'${gs1[gi]}'</code>`;
+    gi++;
+  } else if (gj < gs2.length) {
+    gResult += gs2[gj];
+    el.innerHTML = `s₁ er búið. Bætum eftirstandandi staf úr s₂: <code>'${gs2[gj]}'</code>`;
+    gj++;
+  }
+
+  // Check if we're now done
+  if (gi >= gs1.length && gj >= gs2.length) {
+    gDone = true;
+    const conc = document.getElementById('greedy-conclusion');
+    conc.style.display = 'block';
+    conc.innerHTML = `<strong>Gráðug niðurstaða:</strong> <span class="greedy-bad">"${gResult}"</span> (lengd ${gResult.length})<br><br>`
+      + `<strong>Besta svar:</strong> <span class="optimal">"abba"</span> (lengd 4), inniheldur bæði <code>"aba"</code> og <code>"bba"</code> sem hlutrunu.<br><br>`
+      + `Gráðuga aðferðin tók alla stafi úr s₂ áður en samsvörun fannst, svo hún endaði með lengri streng. Hún sér ekki fram í tímann.`;
+  }
+
+  greedyRender();
+  return !gDone;
+}
+
+function greedyStep() { greedyDoStep(); }
+function greedyAll() { while (greedyDoStep()); }
+
+// Slide 5 (section 5): Interactive recursion walkthrough
+const recSteps = [
+  {
+    s1: ['', '', ''], s2: ['', '', ''],
+    stack: 'LCS("aba", "bba")',
+    explain: 'Byrjum: LCS("aba", "bba"). Berum saman <strong>næstu stafi</strong>.',
+    lcs: '', tree: [0]
+  },
+  {
+    s1: ['pointer', '', ''], s2: ['pointer', '', ''],
+    stack: 'LCS("aba", "bba")',
+    explain: 'Næstu stafir: s₁→<code>\'a\'</code> og s₂→<code>\'b\'</code> -> <span style="color:#e06060">ólíkir</span>. Við vitum ekki hvor er í LCS.<br>Prófum bæði: sleppa næsta úr s₁ (<strong>Leið A</strong>) eða næsta úr s₂ (<strong>Leið B</strong>). Byrjum á Leið A.',
+    lcs: '', tree: [0]
+  },
+  {
+    s1: ['used', 'pointer', ''], s2: ['pointer', '', ''],
+    stack: 'LCS("aba","bba") → <span style="color:#9ecaff">Leið A</span> → LCS("ba","bba")',
+    explain: '<strong>Leið A:</strong> sleppum <code>\'a\'</code> úr s₁. Nú: LCS("ba","bba").<br>Næstu stafir: <code>\'b\'</code> og <code>\'b\'</code> -> <span style="color:#5cb85c">eins!</span> Samsvörun! <code>\'b\'</code> er í LCS.',
+    lcs: 'b', tree: [1]
+  },
+  {
+    s1: ['used', 'matched', 'pointer'], s2: ['matched', 'pointer', ''],
+    stack: '… → LCS("ba","bba") → LCS("a","ba")',
+    explain: 'Höldum áfram eftir samsvörunina. Nú: LCS("a","ba").<br>Næstu stafir: <code>\'a\'</code> og <code>\'b\'</code>, <span style="color:#e06060">ólíkir</span>. Prófum bæði.',
+    lcs: 'b', tree: [2]
+  },
+  {
+    s1: ['used', 'matched', 'used'], s2: ['matched', 'pointer', ''],
+    stack: '… → LCS("a","ba") → <span style="color:#9ecaff">sleppa úr s₁</span> → LCS("","ba")',
+    explain: 'Sleppa <code>\'a\'</code> úr s₁ → LCS("","ba"). s₁ er <strong>tómur</strong>, grunntilfelli!<br>Niðurstaða: <code>""</code> (lengd 0).',
+    lcs: 'b', tree: [3]
+  },
+  {
+    s1: ['used', 'matched', 'pointer'], s2: ['matched', 'used', 'pointer'],
+    stack: '… → LCS("a","ba") → <span style="color:#9ecaff">sleppa úr s₂</span> → LCS("a","a")',
+    explain: 'Nú hin leiðin: sleppa <code>\'b\'</code> úr s₂ → LCS("a","a").<br>Næstu stafir: <code>\'a\'</code> og <code>\'a\'</code>, <span style="color:#5cb85c">eins!</span> Samsvörun! <code>\'a\'</code> er í LCS.',
+    lcs: 'ba', tree: [4]
+  },
+  {
+    s1: ['used', 'matched', 'matched'], s2: ['matched', 'used', 'matched'],
+    stack: '… → LCS("a","a") → LCS("","")',
+    explain: 'Báðir tómir → grunntilfelli. Til baka: LCS("a","a") = <code>"a"</code> (lengd 1).',
+    lcs: 'ba', tree: [4]
+  },
+  {
+    s1: ['used', 'matched', ''], s2: ['matched', '', ''],
+    stack: '… → LCS("a","ba")',
+    explain: 'Niðurstöður úr LCS("a","ba"):<br>• Sleppa úr s₁ gaf <code>""</code> (lengd 0)<br>• Sleppa úr s₂ gaf <code>"a"</code> (lengd 1)<br><strong>Betri: "a"</strong> (lengd 1).',
+    lcs: 'ba', tree: [2, 3, 4]
+  },
+  {
+    s1: ['', 'matched', ''], s2: ['matched', '', ''],
+    stack: 'LCS("aba","bba") → Leið A → LCS("ba","bba")',
+    explain: '<strong>Leið A kláruð!</strong> LCS("ba","bba"): samsvörun <code>\'b\'</code> + besta frá LCS("a","ba") = <code>"a"</code><br>→ LCS = <code>"ba"</code> (lengd 2).',
+    lcs: 'ba', tree: [1, 2, 3, 4]
+  },
+  {
+    s1: ['pointer', '', ''], s2: ['used', 'pointer', ''],
+    stack: 'LCS("aba","bba") → <span style="color:#9ecaff">Leið B</span> → LCS("aba","ba")',
+    explain: 'Nú <strong>Leið B</strong>: sleppum <code>\'b\'</code> úr s₂ → LCS("aba","ba").<br>Næstu stafir: <code>\'a\'</code> og <code>\'b\'</code>, <span style="color:#e06060">ólíkir</span>. Prófum bæði.',
+    lcs: 'ba', tree: [5]
+  },
+  {
+    s1: ['used', 'pointer', ''], s2: ['used', 'pointer', ''],
+    stack: '… → LCS("aba","ba") → sleppa úr s₁ → LCS("ba","ba")',
+    explain: 'Sleppa úr s₁ → LCS("ba","ba"): eins strengir → LCS = <code>"ba"</code> (lengd 2).<br>Sleppa úr s₂ → LCS("aba","a") → … → <code>"a"</code> (lengd 1).<br><strong>Best: "ba"</strong> (lengd 2).',
+    lcs: 'ba', tree: [6, 7]
+  },
+  {
+    s1: ['', '', 'pointer'], s2: ['', '', 'pointer'],
+    stack: 'LCS("aba","bba")',
+    explain: 'Leið B gaf líka <code>"ba"</code> (lengd 2).<br><span style="color:#f0c674">En taktu eftir: LCS("a","a") reiknast bæði í Leið A og Leið B, endurtekning!</span> Þetta er sóun sem tafla leysir.',
+    lcs: 'ba', tree: [4, 9]
+  },
+  {
+    s1: ['', '', ''], s2: ['', '', ''],
+    stack: 'LCS("aba","bba") = "ba"',
+    explain: '<strong>Niðurstaða:</strong> LCS("aba","bba") = <code>"ba"</code> (lengd 2).<br>Endurtekningarnar sýna af hverju hrá endurkvæmni er of hæg, við þurfum <strong>töflu</strong>.',
+    lcs: 'ba', tree: []
+  }
+];
+
+let recIdx = 0;
+
+function recRender() {
+  const step = recSteps[recIdx];
+  const rs1 = 'aba', rs2 = 'bba';
+
+  document.getElementById('rec-s1').innerHTML = rs1.split('').map((c, i) =>
+    `<span class="greedy-char ${step.s1[i]}">${c}</span>`
+  ).join('');
+
+  document.getElementById('rec-s2').innerHTML = rs2.split('').map((c, i) =>
+    `<span class="greedy-char ${step.s2[i]}">${c}</span>`
+  ).join('');
+
+  document.getElementById('rec-result').innerHTML = step.lcs.split('').map(c =>
+    `<span class="greedy-char result-char">${c}</span>`
+  ).join('');
+
+  document.getElementById('rec-stack').innerHTML = step.stack;
+  document.getElementById('rec-explain').innerHTML = step.explain;
+
+  // Highlight corresponding tree lines
+  for (let t = 0; t < 10; t++) {
+    const el = document.getElementById('tree-' + t);
+    if (el) el.classList.toggle('tree-hl', step.tree.includes(t));
+  }
+}
+
+function recReset() {
+  recIdx = 0;
+  for (let t = 0; t < 10; t++) {
+    const el = document.getElementById('tree-' + t);
+    if (el) el.classList.remove('tree-hl');
+  }
+  recRender();
+}
+
+function recStep() {
+  if (recIdx < recSteps.length - 1) { recIdx++; recRender(); }
+}
+
+function recAll() {
+  recIdx = recSteps.length - 1;
+  recRender();
+}
+
+// Slide 6: DP table
+const s1 = 'aba', s2 = 'bba';
+const m = s1.length, n = s2.length;
+let dp = [], dpI, dpJ;
+
+function buildDPTableHTML(tableId) {
+  const t = document.getElementById(tableId);
+  let html = '<tr><th></th><th>∅</th>';
+  for (let j = 0; j < n; j++) html += `<th>${s2[j]}</th>`;
+  html += '</tr>';
+  html += '<tr><th>∅</th>';
+  for (let j = 0; j <= n; j++) html += `<td id="${tableId}-0-${j}">0</td>`;
+  html += '</tr>';
+  for (let i = 1; i <= m; i++) {
+    html += `<tr><th>${s1[i-1]}</th>`;
+    for (let j = 0; j <= n; j++) html += `<td id="${tableId}-${i}-${j}">${j === 0 ? '0' : ''}</td>`;
+    html += '</tr>';
+  }
+  t.innerHTML = html;
+}
+
+function dpReset() {
+  dp = Array.from({length: m+1}, () => Array(n+1).fill(0));
+  dpI = 1; dpJ = 1;
+  buildDPTableHTML('dp-table');
+  document.getElementById('dp-info').textContent = '';
+}
+
+function dpFillCell() {
+  if (dpI > m) return false;
+  if (s1[dpI-1] === s2[dpJ-1]) {
+    dp[dpI][dpJ] = dp[dpI-1][dpJ-1] + 1;
+  } else {
+    dp[dpI][dpJ] = Math.max(dp[dpI-1][dpJ], dp[dpI][dpJ-1]);
+  }
+  // clear previous current
+  document.querySelectorAll('#dp-table td.current').forEach(c => { c.classList.remove('current'); c.classList.add('filled'); });
+  const cell = document.getElementById(`dp-table-${dpI}-${dpJ}`);
+  cell.textContent = dp[dpI][dpJ];
+  cell.classList.add('current');
+
+  const infoEl = document.getElementById('dp-info');
+  if (s1[dpI-1] === s2[dpJ-1]) {
+    infoEl.innerHTML = `'${s1[dpI-1]}' = '${s2[dpJ-1]}', <span style="color:#5cb85c">samsvörun!</span> Á ská (${dp[dpI-1][dpJ-1]}) + 1 = <strong>${dp[dpI][dpJ]}</strong>`;
+  } else {
+    const up = dp[dpI-1][dpJ], left = dp[dpI][dpJ-1];
+    infoEl.innerHTML = `'${s1[dpI-1]}' ≠ '${s2[dpJ-1]}', <span style="color:#e06060">ólíkir.</span> Fyrir ofan = ${up}, til vinstri = ${left} → betri: <strong>${dp[dpI][dpJ]}</strong>`;
+  }
+
+  dpJ++;
+  if (dpJ > n) { dpJ = 1; dpI++; }
+  return true;
+}
+
+function dpStep() { dpFillCell(); }
+function dpFillAll() { while (dpFillCell()); }
+
+// Slide 6: Backtracking
+let btI, btJ, btLCS;
+function btReset() {
+  // ensure dp is filled
+  dp = Array.from({length: m+1}, () => Array(n+1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = s1[i-1] === s2[j-1] ? dp[i-1][j-1]+1 : Math.max(dp[i-1][j], dp[i][j-1]);
+
+  buildDPTableHTML('bt-table');
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++) {
+      const c = document.getElementById(`bt-table-${i}-${j}`);
+      c.textContent = dp[i][j];
+      c.classList.add('filled');
+    }
+  btI = m; btJ = n; btLCS = '';
+  document.getElementById('bt-info').textContent = `Byrjum í (${m},${n})`;
+  document.getElementById('bt-result').textContent = '';
+  document.getElementById(`bt-table-${m}-${n}`).classList.add('current');
+}
+
+function btDoStep() {
+  if (btI === 0 || btJ === 0) return false;
+  document.getElementById(`bt-table-${btI}-${btJ}`).classList.remove('current');
+  document.getElementById(`bt-table-${btI}-${btJ}`).classList.add('path');
+  if (s1[btI-1] === s2[btJ-1]) {
+    btLCS = s1[btI-1] + btLCS;
+    document.getElementById('bt-info').textContent = `'${s1[btI-1]}' = '${s2[btJ-1]}' → í LCS! Á ská.`;
+    btI--; btJ--;
+  } else if (dp[btI-1][btJ] >= dp[btI][btJ-1]) {
+    document.getElementById('bt-info').textContent = `Upp (dp[${btI-1}][${btJ}]=${dp[btI-1][btJ]} ≥ dp[${btI}][${btJ-1}]=${dp[btI][btJ-1]})`;
+    btI--;
+  } else {
+    document.getElementById('bt-info').textContent = `Til vinstri (dp[${btI}][${btJ-1}]=${dp[btI][btJ-1]} > dp[${btI-1}][${btJ}]=${dp[btI-1][btJ]})`;
+    btJ--;
+  }
+  if (btI >= 0 && btJ >= 0) {
+    const c = document.getElementById(`bt-table-${btI}-${btJ}`);
+    if (c) c.classList.add('current');
+  }
+  if (btI === 0 || btJ === 0) {
+    document.getElementById('bt-result').innerHTML = `LCS = <code>"${btLCS}"</code> (lengd ${btLCS.length})`;
+  }
+  return btI > 0 && btJ > 0;
+}
+function btStep() { btDoStep(); }
+function btAll() { while (btDoStep()); }
+
+// Slide 8: Python code
+document.getElementById('code-block').innerHTML = highlight(`
+  s1 = input().strip()
+  s2 = input().strip()
+  m, n = len(s1), len(s2)
+
+  # 1. Fylla LCS-töfluna
+  dp = [[0] * (n + 1) for _ in range(m + 1)]
+  for i in range(1, m + 1):
+      for j in range(1, n + 1):
+          if s1[i-1] == s2[j-1]:        # samsvörun
+              dp[i][j] = dp[i-1][j-1] + 1
+          else:                          # ólíkir
+              dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+
+  # 2. Bakrekja til að byggja SCS
+  res = []
+  i, j = m, n
+  while i > 0 and j > 0:
+      if s1[i-1] == s2[j-1]:
+          # Sameiginlegur stafur -> skrifum einu sinni
+          res.append(s1[i-1])
+          i -= 1
+          j -= 1
+      elif dp[i-1][j] >= dp[i][j-1]:
+          # Förum upp -> skrifum staf úr s1
+          res.append(s1[i-1])
+          i -= 1
+      else:
+          # Förum til vinstri -> skrifum staf úr s2
+          res.append(s2[j-1])
+          j -= 1
+
+  # Eftirstandandi stafir
+  while i > 0:
+      res.append(s1[i-1])
+      i -= 1
+  while j > 0:
+      res.append(s2[j-1])
+      j -= 1
+
+  # 3. Snúa við (bakrekstrið gaf öfuga röð)
+  print(''.join(reversed(res)))
+
+`);
+
+function highlight(code) {
+  const kw = ['import','def','for','in','if','else','elif','while','and','or','not','return','print','range','len','max','reversed'];
+  return code
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/(#.*)/gm, '<span class="highlight-cmt">$1</span>')
+    .replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="highlight-str">$1</span>')
+    .replace(/\b(\d+)\b/g, '<span class="highlight-num">$1</span>')
+    .replace(new RegExp('\\b(' + kw.join('|') + ')\\b', 'g'), '<span class="highlight-kw">$1</span>')
+    .replace(/\b(solve|strip|append|join)\b/g, '<span class="highlight-fn">$1</span>');
+}
+
+// Init: pre-build tables so they are always in the DOM
+buildDPTableHTML('dp-table');
+buildDPTableHTML('bt-table');
+show(0);
+</script>
+</body>
+</html>
